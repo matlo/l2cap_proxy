@@ -9,6 +9,14 @@
 #include <fcntl.h>
 #include <stdlib.h>
 
+#define BT_POWER 9
+#define BT_POWER_FORCE_ACTIVE_OFF 0
+#define BT_POWER_FORCE_ACTIVE_ON 1
+
+struct bt_power {
+  unsigned char force_active;
+};
+
 int l2cap_listen(int psm)
 {
 	struct sockaddr_l2 loc_addr = { 0 };
@@ -61,6 +69,12 @@ int l2cap_accept(int s)
 
 	ba2str(&rem_addr.l2_bdaddr, buf);
 	printf("accepted connection from %s\n", buf);
+  
+  struct bt_power pwr = {.force_active = BT_POWER_FORCE_ACTIVE_OFF};
+  if (setsockopt(client, SOL_BLUETOOTH, BT_POWER, &pwr, sizeof(pwr)) < 0)
+  {
+    perror("setsockopt BT_POWER");
+  }
 
 	return client;
 }
@@ -91,5 +105,12 @@ int l2cap_connect(const char *bdaddr, int psm)
     perror("connect");
     exit(-1);
   }
+  
+  struct bt_power pwr = {.force_active = BT_POWER_FORCE_ACTIVE_OFF};
+  if (setsockopt(fd, SOL_BLUETOOTH, BT_POWER, &pwr, sizeof(pwr)) < 0)
+  {
+    perror("setsockopt BT_POWER");
+  }
+  
   return fd;
 }
