@@ -9,13 +9,17 @@
 #include <fcntl.h>
 #include <stdlib.h>
 
+#ifdef BT_POWER
+#warning "BT_POWER is already defined."
+#else
 #define BT_POWER 9
 #define BT_POWER_FORCE_ACTIVE_OFF 0
-#define BT_POWER_FORCE_ACTIVE_ON 1
+#define BT_POWER_FORCE_ACTIVE_ON  1
 
 struct bt_power {
   unsigned char force_active;
 };
+#endif
 
 int l2cap_listen(int psm)
 {
