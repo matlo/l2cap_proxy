@@ -11,7 +11,7 @@ Instructions for Ubuntu-based distros:
 sudo apt-get install libbluetooth-dev  
 sudo service bluetooth stop  
 sudo hciconfig hci0 up pscan  
-sudo ./l2cap <master bdaddr>  
+sudo ./l2cap master_bdaddr  
 
 In debian the bluetooth service is automatically started when a device tries to connect.  
 To disable the service, run the following command and reboot:  
