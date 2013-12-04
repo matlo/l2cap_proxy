@@ -28,8 +28,8 @@ sudo hciconfig hci0 up pscan
 sudo ./l2cap master_bdaddr  
 ```
 
-In Debian the bluetooth service is automatically started when a device tries to connect.
-This is annoying since it will intercept the connection requests.    
+In Debian the bluetooth service is automatically started when a device tries to connect.  
+This is annoying since it will intercept the connection requests.  
 To disable the service, run the following command and reboot:  
 ```
 sudo update-rc.d triggerhappy disable  
