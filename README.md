@@ -34,6 +34,11 @@ To disable the service, run the following command and reboot:
 ```
 sudo update-rc.d triggerhappy disable  
 ```
+Moving the bluetoothd binary will also prevent it from being started:  
+```
+sudo mv /usr/sbin/bluetoothd /usr/sbin/bluetoothd.bk  
+```
+This trick is usefull when using a Live CD or a Live USB.  
 
 Capture the bluetooth traffic
 -----------------------------
