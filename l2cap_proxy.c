@@ -19,8 +19,11 @@
 #include <sys/types.h>
 #include "bt_utils.h"
 
+/*
+ * https://www.bluetooth.org/en-us/specification/assigned-numbers/logical-link-control
+ */
 #define PSM_SDP 0x0001 //Service Discovery Protocol
-#define PSM_RFCOMM  0x0003 //Can't be used for L2CAP
+#define PSM_RFCOMM  0x0003 //Can't be used for L2CAP sockets
 #define PSM_TCS_BIN 0x0005 //Telephony Control Specification
 #define PSM_TCS_BIN_CORDLESS  0x0007 //Telephony Control Specification
 #define PSM_BNEP  0x000F //Bluetooth Network Encapsulation Protocol
