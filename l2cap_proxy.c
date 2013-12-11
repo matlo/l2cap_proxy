@@ -83,67 +83,89 @@ void dump(unsigned char* buf, int len)
 
 int main(int argc, char *argv[])
 {
-	char* master = NULL;
-	char* slave = NULL;
-	unsigned char buf[1024];
-	ssize_t len;
+  char* master = NULL;
+  char* slave = NULL;
+  uint32_t device_class = 0x508;
+  unsigned char buf[1024];
+  ssize_t len;
 
   (void) signal(SIGINT, terminate);
 
-	/* Check args */
-	if (argc >= 1)
-		master = argv[1];
+  /* Check args */
+  if (argc >= 1)
+    master = argv[1];
 
   if (argc >= 2)
     slave = argv[2];
 
-	if (!master || bachk(master) == -1 || (slave && bachk(slave) == -1)) {
-		printf("usage: %s <ps3-mac-address> <dongle-mac-address>\n", *argv);
-		return 1;
-	}
+  if (argc >= 3)
+    device_class = strtol(argv[3], NULL, 0);
 
-	if(write_device_class(0, 0x508) < 0)
-	{
+  if (!master || bachk(master) == -1 || (slave && bachk(slave) == -1)) {
+    printf("usage: %s <ps3-mac-address> <dongle-mac-address> <device-class>\n", *argv);
+    return 1;
+  }
+
+  if(write_device_class(0, device_class) < 0)
+  {
     printf("failed to set device class\n");
     return 1;
-	}
+  }
 
-	/*
-	 * [0..MAX_FDS/3[            fds to accept new connections
-	 * [MAX_FDS/3..2*MAX_FDS/3[  fds connected to the slave
-	 * [2*MAX_FDS/3..MAX_FDS[    fds connected to the master
-	 */
-	struct pollfd pfd[MAX_FDS] = {};
+  /*
+   * [0..MAX_FDS/3[            fds to accept new connections
+   * [MAX_FDS/3..2*MAX_FDS/3[  fds connected to the slave
+   * [2*MAX_FDS/3..MAX_FDS[    fds connected to the master
+   */
+  struct pollfd pfd[MAX_FDS] = {};
 
-	int i;
+  int i;
   for(i=0; i<MAX_FDS; ++i)
   {
     pfd[i].fd = -1;
   }
 
-	for(i=0; i<PSM_MAX_INDEX; ++i)
-	{
-	  pfd[i].fd = l2cap_listen(psm_list[i]);
-	}
+  for(i=0; i<PSM_MAX_INDEX; ++i)
+  {
+    pfd[i].fd = l2cap_listen(psm_list[i]);
+  }
 
-	while(!done)
-	{
-	  for(i=0; i<MAX_FDS; ++i)
-	  {
-	    if(pfd[i].fd > -1)
-	    {
-	      pfd[i].events = POLLIN;
-	    }
-	  }
+  while(!done)
+  {
+    for(i=0; i<MAX_FDS; ++i)
+    {
+      if(pfd[i].fd > -1)
+      {
+        pfd[i].events = POLLIN;
+      }
+    }
 
-		if(poll(pfd, MAX_FDS, -1))
-		{
-		  for(i=0; i<MAX_FDS; ++i)
-		  {
-        if (pfd[i].revents & POLLERR) {
-            fprintf(stderr, "error on psm: %d\n", psm_list[i%SLAVE_OFFSET]);
-            done = 1;
-            break;
+    if(poll(pfd, MAX_FDS, -1))
+    {
+      for(i=0; i<MAX_FDS; ++i)
+      {
+        if (pfd[i].revents & POLLERR)
+        {
+          if(i < SLAVE_OFFSET)
+          {
+            printf("connection error from listening socket (psm: 0x%04x)\n", psm_list[i]);
+          }
+          else if(i >= SLAVE_OFFSET && i < MASTER_OFFSET)
+          {
+            printf("connection error from client (psm: 0x%04x)\n", psm_list[i-SLAVE_OFFSET]);
+            close(pfd[i].fd);
+            pfd[i].fd = -1;
+            close(pfd[i+SLAVE_OFFSET].fd);
+            pfd[i+SLAVE_OFFSET].fd = -1;
+          }
+          else
+          {
+            printf("connection error from server (psm: 0x%04x)\n", psm_list[i-MASTER_OFFSET]);
+            close(pfd[i].fd);
+            pfd[i].fd = -1;
+            close(pfd[i-SLAVE_OFFSET].fd);
+            pfd[i-SLAVE_OFFSET].fd = -1;
+          }
         }
 
         if(pfd[i].revents & POLLIN)
@@ -160,19 +182,19 @@ int main(int argc, char *argv[])
 
                 if(pfd[i+MASTER_OFFSET].fd < 0)
                 {
-                  printf("connection error from server (psm: %d)\n", psm_list[i]);
-                  done = 1;
+                  printf("can't connect to server (psm: 0x%04x)\n", psm_list[i]);
+                  close(pfd[i+SLAVE_OFFSET].fd);
+                  pfd[i+SLAVE_OFFSET].fd = -1;
                 }
               }
               else
               {
-                printf("connection error from client (psm: %d)\n", psm_list[i]);
-                done = 1;
+                printf("connection error from client (psm: 0x%04x)\n", psm_list[i]);
               }
             }
             else
             {
-              fprintf(stderr, "psm already used: %d\n", psm_list[i]);
+              fprintf(stderr, "psm already used: 0x%04x\n", psm_list[i]);
             }
           }
           else if(i >= SLAVE_OFFSET && i < MASTER_OFFSET)
@@ -183,14 +205,17 @@ int main(int argc, char *argv[])
               send(pfd[i+MAX_FDS/3].fd, buf, len, MSG_DONTWAIT);
               if(debug)
               {
-                printf("CLIENT > SERVER (psm: %d)\n", psm_list[i-SLAVE_OFFSET]);
+                printf("CLIENT > SERVER (psm: 0x%04x)\n", psm_list[i-SLAVE_OFFSET]);
                 dump(buf, len);
               }
             }
-            else
+            else if(errno != EINTR)
             {
-              printf("connection error from client (psm: %d)\n", psm_list[i-SLAVE_OFFSET]);
-              done = 1;
+              printf("connection error from client (psm: 0x%04x)\n", psm_list[i-SLAVE_OFFSET]);
+              close(pfd[i].fd);
+              pfd[i].fd = -1;
+              close(pfd[i+SLAVE_OFFSET].fd);
+              pfd[i+SLAVE_OFFSET].fd = -1;
             }
           }
           else
@@ -201,28 +226,31 @@ int main(int argc, char *argv[])
               send(pfd[i-SLAVE_OFFSET].fd, buf, len, MSG_DONTWAIT);
               if(debug)
               {
-                printf("SERVER > CLIENT (psm: %d)\n", psm_list[i-MASTER_OFFSET]);
+                printf("SERVER > CLIENT (psm: 0x%04x)\n", psm_list[i-MASTER_OFFSET]);
                 dump(buf, len);
               }
             }
-            else
+            else if(errno != EINTR)
             {
-              printf("connection error from server (psm: %d)\n", psm_list[i-MASTER_OFFSET]);
-              done = 1;
+              printf("connection error from server (psm: 0x%04x)\n", psm_list[i-MASTER_OFFSET]);
+              close(pfd[i].fd);
+              pfd[i].fd = -1;
+              close(pfd[i-SLAVE_OFFSET].fd);
+              pfd[i-SLAVE_OFFSET].fd = -1;
             }
           }
         }
-		  }
-		}
-	}
+      }
+    }
+  }
 
-	for(i=MAX_FDS-1; i>-1; --i)
-	{
-	  if(pfd[i].fd > -1)
-	  {
-	    close(pfd[i].fd);
-	  }
-	}
+  for(i=MAX_FDS-1; i>-1; --i)
+  {
+    if(pfd[i].fd > -1)
+    {
+      close(pfd[i].fd);
+    }
+  }
 
-	return 0;
+  return 0;
 }
