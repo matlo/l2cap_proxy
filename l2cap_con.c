@@ -21,7 +21,7 @@ struct bt_power {
 };
 #endif
 
-int l2cap_listen(int psm)
+int l2cap_listen(unsigned short psm)
 {
 	struct sockaddr_l2 loc_addr = { 0 };
 	int s;
@@ -52,7 +52,7 @@ int l2cap_listen(int psm)
     exit(-1);
   }
 
-	printf("listening on port: %d\n", psm);
+	printf("listening on psm: %d\n", psm);
 
 	return s;
 }
@@ -72,7 +72,7 @@ int l2cap_accept(int s)
   }
 
 	ba2str(&rem_addr.l2_bdaddr, buf);
-	printf("accepted connection from %s\n", buf);
+	printf("accepted connection from %s (psm: %d)\n", buf, btohs(rem_addr.l2_psm));
   
   struct bt_power pwr = {.force_active = BT_POWER_FORCE_ACTIVE_OFF};
   if (setsockopt(client, SOL_BLUETOOTH, BT_POWER, &pwr, sizeof(pwr)) < 0)
@@ -83,7 +83,7 @@ int l2cap_accept(int s)
 	return client;
 }
 
-int l2cap_connect(const char *bdaddr, int psm)
+int l2cap_connect(const char *bdaddr_src, const char *bdaddr_dest, unsigned short psm)
 {
   int fd;
   struct sockaddr_l2 addr;
@@ -100,16 +100,27 @@ int l2cap_connect(const char *bdaddr, int psm)
     perror("setsockopt L2CAP_LM");
     exit(-1);
   }
+
+  if(bdaddr_src)
+  {
+    memset(&addr, 0, sizeof(addr));
+    addr.l2_family = AF_BLUETOOTH;
+    str2ba(bdaddr_src, &addr.l2_bdaddr);
+    bind(fd, (struct sockaddr *)&addr, sizeof(addr));
+  }
+
   memset(&addr, 0, sizeof(addr));
   addr.l2_family = AF_BLUETOOTH;
   addr.l2_psm = htobs(psm);
-  str2ba(bdaddr, &addr.l2_bdaddr);
+  str2ba(bdaddr_dest, &addr.l2_bdaddr);
   if (connect(fd, (struct sockaddr *) &addr, sizeof(addr)) < 0)
   {
     perror("connect");
     exit(-1);
   }
   
+  printf("connected to %s (psm: %d)\n", bdaddr_dest, btohs(addr.l2_psm));
+
   struct bt_power pwr = {.force_active = BT_POWER_FORCE_ACTIVE_OFF};
   if (setsockopt(fd, SOL_BLUETOOTH, BT_POWER, &pwr, sizeof(pwr)) < 0)
   {

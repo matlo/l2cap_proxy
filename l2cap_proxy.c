@@ -19,11 +19,46 @@
 #include <sys/types.h>
 #include "bt_utils.h"
 
-#define CTRL 17
-#define DATA 19
+#define PSM_SDP 0x0001 //Service Discovery Protocol
+#define PSM_RFCOMM  0x0003 //Can't be used for L2CAP
+#define PSM_TCS_BIN 0x0005 //Telephony Control Specification
+#define PSM_TCS_BIN_CORDLESS  0x0007 //Telephony Control Specification
+#define PSM_BNEP  0x000F //Bluetooth Network Encapsulation Protocol
+#define PSM_HID_Control 0x0011 //Human Interface Device
+#define PSM_HID_Interrupt 0x0013 //Human Interface Device
+#define PSM_UPnP  0x0015
+#define PSM_AVCTP 0x0017 //Audio/Video Control Transport Protocol
+#define PSM_AVDTP 0x0019 //Audio/Video Distribution Transport Protocol
+#define PSM_AVCTP_Browsing  0x001B //Audio/Video Remote Control Profile
+#define PSM_UDI_C_Plane 0x001D //Unrestricted Digital Information Profile
+#define PSM_ATT 0x001F
+#define PSM_3DSP 0x0021 //3D Synchronization Profile
 
-static int debug_data = 0;
-static int debug_ctrl = 0;
+static unsigned short psm_list[] =
+{
+    PSM_SDP,
+    PSM_TCS_BIN,
+    PSM_TCS_BIN_CORDLESS,
+    PSM_BNEP,
+    PSM_HID_Control,
+    PSM_HID_Interrupt,
+    PSM_UPnP,
+    PSM_AVCTP,
+    PSM_AVDTP,
+    PSM_AVCTP_Browsing,
+    PSM_UDI_C_Plane,
+    PSM_ATT,
+    PSM_3DSP
+};
+
+#define PSM_MAX_INDEX (sizeof(psm_list)/sizeof(*psm_list))
+
+#define MAX_FDS (PSM_MAX_INDEX*3)
+
+#define SLAVE_OFFSET (MAX_FDS/3)
+#define MASTER_OFFSET (2*MAX_FDS/3)
+
+static int debug = 0;
 
 static volatile int done = 0;
 
@@ -48,24 +83,22 @@ void dump(unsigned char* buf, int len)
 
 int main(int argc, char *argv[])
 {
-	int ctrl_fd, data_fd;
-	int client_ctrl, client_data;
-	int server_ctrl, server_data;
-	char* bdaddr;
-	fd_set read_set;
+	char* master = NULL;
+	char* slave = NULL;
 	unsigned char buf[1024];
 	ssize_t len;
-	int fd_max = 0;
-  struct timeval tv;
 
   (void) signal(SIGINT, terminate);
 
 	/* Check args */
 	if (argc >= 1)
-		bdaddr = argv[1];
+		master = argv[1];
 
-	if (bachk(bdaddr) == -1) {
-		printf("usage: %s <ps3-mac-address>\n", *argv);
+  if (argc >= 2)
+    slave = argv[2];
+
+	if (!master || bachk(master) == -1 || (slave && bachk(slave) == -1)) {
+		printf("usage: %s <ps3-mac-address> <dongle-mac-address>\n", *argv);
 		return 1;
 	}
 
@@ -75,137 +108,121 @@ int main(int argc, char *argv[])
     return 1;
 	}
 
-	ctrl_fd = l2cap_listen(CTRL);
-	client_ctrl = l2cap_accept(ctrl_fd);
+	/*
+	 * [0..MAX_FDS/3[            fds to accept new connections
+	 * [MAX_FDS/3..2*MAX_FDS/3[  fds connected to the slave
+	 * [2*MAX_FDS/3..MAX_FDS[    fds connected to the master
+	 */
+	struct pollfd pfd[MAX_FDS] = {};
 
-	data_fd = l2cap_listen(DATA);
-	client_data = l2cap_accept(data_fd);
+	int i;
+  for(i=0; i<MAX_FDS; ++i)
+  {
+    pfd[i].fd = -1;
+  }
 
-	server_ctrl = l2cap_connect(bdaddr, CTRL);
-	server_data = l2cap_connect(bdaddr, DATA);
-
-	if(client_ctrl > fd_max)
+	for(i=0; i<PSM_MAX_INDEX; ++i)
 	{
-	  fd_max = client_ctrl;
+	  pfd[i].fd = l2cap_listen(psm_list[i]);
 	}
-
-  if(client_data > fd_max)
-  {
-    fd_max = client_data;
-  }
-
-  if(server_ctrl > fd_max)
-  {
-    fd_max = server_ctrl;
-  }
-
-  if(server_data > fd_max)
-  {
-    fd_max = server_data;
-  }
 
 	while(!done)
 	{
-		FD_ZERO(&read_set);
-		FD_SET(client_ctrl, &read_set);
-		FD_SET(client_data, &read_set);
-		FD_SET(server_ctrl, &read_set);
-		FD_SET(server_data, &read_set);
+	  for(i=0; i<MAX_FDS; ++i)
+	  {
+	    if(pfd[i].fd > -1)
+	    {
+	      pfd[i].events = POLLIN;
+	    }
+	  }
 
-		tv.tv_sec = 1;
-		tv.tv_usec = 0;
-
-		select(fd_max+1, &read_set, NULL, NULL, &tv);
-
-		if (FD_ISSET(client_ctrl, &read_set))
+		if(poll(pfd, MAX_FDS, -1))
 		{
-			len = recv(client_ctrl, buf, 1024, MSG_DONTWAIT);
-			if (len > 0)
-			{
-				send(server_ctrl, buf, len, MSG_DONTWAIT);
-				if(debug_ctrl)
-				{
-          printf("CTRL CLIENT > SERVER\n");
-          dump(buf, len);
-				}
-			}
-			else
-			{
-			  printf("connection error from client (control)\n");
-			  done = 1;
-			}
-		}
-
-		if (FD_ISSET(client_data, &read_set))
-		{
-			len = recv(client_data, buf, 1024, MSG_DONTWAIT);
-			if (len > 0)
-			{
-				send(server_data, buf, len, MSG_DONTWAIT);
-        if(debug_data)
-        {
-          printf("DATA CLIENT > SERVER\n");
-          dump(buf, len);
+		  for(i=0; i<MAX_FDS; ++i)
+		  {
+        if (pfd[i].revents & POLLERR) {
+            fprintf(stderr, "error on psm: %d\n", psm_list[i%SLAVE_OFFSET]);
+            done = 1;
+            break;
         }
-			}
-      else
-      {
-        printf("connection error from client (data)\n");
-        done = 1;
-      }
-		}
 
-		if (FD_ISSET(server_ctrl, &read_set))
-		{
-			len = recv(server_ctrl, buf, 1024, MSG_DONTWAIT);
-			if (len > 0)
-			{
-				send(client_ctrl, buf, len, MSG_DONTWAIT);
-        if(debug_ctrl)
+        if(pfd[i].revents & POLLIN)
         {
-          printf("CTRL SERVER > CLIENT\n");
-          dump(buf, len);
-        }
-			}
-      else
-      {
-        printf("connection error from server (control)\n");
-        done = 1;
-      }
-		}
+          if(i < SLAVE_OFFSET)
+          {
+            if(pfd[i+SLAVE_OFFSET].fd < 0)
+            {
+              pfd[i+SLAVE_OFFSET].fd = l2cap_accept(pfd[i].fd);
 
-		if (FD_ISSET(server_data, &read_set))
-		{
-			len = recv(server_data, buf, 1024, MSG_DONTWAIT);
-			if (len > 0)
-			{
-				send(client_data, buf, len, MSG_DONTWAIT);
-        if(debug_data)
-        {
-          printf("DATA SERVER > CLIENT\n");
-          dump(buf, len);
+              if(pfd[i+SLAVE_OFFSET].fd > -1)
+              {
+                pfd[i+MASTER_OFFSET].fd = l2cap_connect(slave, master, psm_list[i]);
+
+                if(pfd[i+MASTER_OFFSET].fd < 0)
+                {
+                  printf("connection error from server (psm: %d)\n", psm_list[i]);
+                  done = 1;
+                }
+              }
+              else
+              {
+                printf("connection error from client (psm: %d)\n", psm_list[i]);
+                done = 1;
+              }
+            }
+            else
+            {
+              fprintf(stderr, "psm already used: %d\n", psm_list[i]);
+            }
+          }
+          else if(i >= SLAVE_OFFSET && i < MASTER_OFFSET)
+          {
+            len = recv(pfd[i].fd, buf, 1024, MSG_DONTWAIT);
+            if (len > 0)
+            {
+              send(pfd[i+MAX_FDS/3].fd, buf, len, MSG_DONTWAIT);
+              if(debug)
+              {
+                printf("CLIENT > SERVER (psm: %d)\n", psm_list[i-SLAVE_OFFSET]);
+                dump(buf, len);
+              }
+            }
+            else
+            {
+              printf("connection error from client (psm: %d)\n", psm_list[i-SLAVE_OFFSET]);
+              done = 1;
+            }
+          }
+          else
+          {
+            len = recv(pfd[i].fd, buf, 1024, MSG_DONTWAIT);
+            if (len > 0)
+            {
+              send(pfd[i-SLAVE_OFFSET].fd, buf, len, MSG_DONTWAIT);
+              if(debug)
+              {
+                printf("SERVER > CLIENT (psm: %d)\n", psm_list[i-MASTER_OFFSET]);
+                dump(buf, len);
+              }
+            }
+            else
+            {
+              printf("connection error from server (psm: %d)\n", psm_list[i-MASTER_OFFSET]);
+              done = 1;
+            }
+          }
         }
-			}
-      else
-      {
-        printf("connection error from server (data)\n");
-        done = 1;
-      }
+		  }
 		}
 	}
 
-  close(server_data);
-  printf("%s\n", strerror(errno));
-  close(server_ctrl);
-  printf("%s\n", strerror(errno));
-
-  close(client_data);
-  printf("%s\n", strerror(errno));
-  close(client_ctrl);
-  printf("%s\n", strerror(errno));
-
-  close(data_fd);
-  close(ctrl_fd);
+	for(i=MAX_FDS-1; i>-1; --i)
+	{
+	  if(pfd[i].fd > -1)
+	  {
+	    close(pfd[i].fd);
+	  }
+	}
 
 	return 0;
 }
