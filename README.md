@@ -25,7 +25,7 @@ Run the proxy
 ```
 sudo service bluetooth stop  
 sudo hciconfig hci0 up pscan  
-sudo ./l2cap master_bdaddr  
+sudo ./l2cap <master-bdaddr> <device-bdaddr> <device-class>  
 ```
 
 In Debian the bluetooth service is automatically started when a device tries to connect.  
