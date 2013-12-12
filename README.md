@@ -1,12 +1,14 @@
 l2cap_proxy
 ===========
 
-This tool is a l2cap proxy for HID devices.  
+This tool is a l2cap proxy.  
 It performs like this:  
 
 bt device <----> PC <----> bt master  
 
-It was only tested with a PS3 and a DS3.  
+It was only tested with a PS3 and a DS3 (which implements the HID profile).  
+It should work without modification for all the predefined l2cap PSMs (https://www.bluetooth.org/en-us/specification/assigned-numbers/logical-link-control).  
+Other PSMs can be easily added in the source code.  
 It only runs on Linux (tested with Ubuntu and Debian), and it requires a bluetooth dongle.  
 The master and the device have to be paired with the bluetooth dongle.  
 
@@ -25,7 +27,7 @@ Run the proxy
 ```
 sudo service bluetooth stop  
 sudo hciconfig hci0 up pscan  
-sudo ./l2cap master_bdaddr  
+sudo ./l2cap <master-bdaddr> <dongle-bdaddr> <device-class>  
 ```
 
 In Debian the bluetooth service is automatically started when a device tries to connect.  
