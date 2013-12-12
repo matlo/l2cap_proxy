@@ -56,10 +56,9 @@ static unsigned short psm_list[] =
 
 #define PSM_MAX_INDEX (sizeof(psm_list)/sizeof(*psm_list))
 
-#define MAX_FDS (PSM_MAX_INDEX*3)
-
-#define SLAVE_OFFSET (MAX_FDS/3)
-#define MASTER_OFFSET (2*MAX_FDS/3)
+#define LISTEN_INDEX 0
+#define SLAVE_INDEX  1
+#define MASTER_INDEX 2
 
 static int debug = 0;
 
@@ -116,130 +115,139 @@ int main(int argc, char *argv[])
   }
 
   /*
-   * [0..MAX_FDS/3[            fds to accept new connections
-   * [MAX_FDS/3..2*MAX_FDS/3[  fds connected to the slave
-   * [2*MAX_FDS/3..MAX_FDS[    fds connected to the master
+   * table 1: fds to accept new connections
+   * table 2: fds connected to the slave
+   * table 3: fds connected to the master
    */
-  struct pollfd pfd[MAX_FDS] = {};
+  struct pollfd pfd[3][PSM_MAX_INDEX] = {};
 
-  int i;
-  for(i=0; i<MAX_FDS; ++i)
+  int i, psm;
+  for(i=0; i<3; ++i)
   {
-    pfd[i].fd = -1;
+    for(psm=0; psm<PSM_MAX_INDEX; ++psm)
+    {
+      pfd[i][psm].fd = -1;
+    }
   }
 
-  for(i=0; i<PSM_MAX_INDEX; ++i)
+  for(psm=0; psm<PSM_MAX_INDEX; ++psm)
   {
-    pfd[i].fd = l2cap_listen(psm_list[i]);
+    pfd[LISTEN_INDEX][psm].fd = l2cap_listen(psm_list[psm]);
   }
 
   while(!done)
   {
-    for(i=0; i<MAX_FDS; ++i)
+    for(i=0; i<3; ++i)
     {
-      if(pfd[i].fd > -1)
+      for(psm=0; psm<PSM_MAX_INDEX; ++psm)
       {
-        pfd[i].events = POLLIN;
+        if(pfd[i][psm].fd > -1)
+        {
+          pfd[i][psm].events = POLLIN;
+        }
       }
     }
 
-    if(poll(pfd, MAX_FDS, -1))
+    if(poll(*pfd, 3*PSM_MAX_INDEX, -1))
     {
-      for(i=0; i<MAX_FDS; ++i)
+      for(i=0; i<3; ++i)
       {
-        if (pfd[i].revents & POLLERR)
+        for(psm=0; psm<PSM_MAX_INDEX; ++psm)
         {
-          if(i < SLAVE_OFFSET)
+          if (pfd[i][psm].revents & POLLERR)
           {
-            printf("connection error from listening socket (psm: 0x%04x)\n", psm_list[i]);
-          }
-          else if(i >= SLAVE_OFFSET && i < MASTER_OFFSET)
-          {
-            printf("connection error from client (psm: 0x%04x)\n", psm_list[i-SLAVE_OFFSET]);
-            close(pfd[i].fd);
-            pfd[i].fd = -1;
-            close(pfd[i+SLAVE_OFFSET].fd);
-            pfd[i+SLAVE_OFFSET].fd = -1;
-          }
-          else
-          {
-            printf("connection error from server (psm: 0x%04x)\n", psm_list[i-MASTER_OFFSET]);
-            close(pfd[i].fd);
-            pfd[i].fd = -1;
-            close(pfd[i-SLAVE_OFFSET].fd);
-            pfd[i-SLAVE_OFFSET].fd = -1;
-          }
-        }
-
-        if(pfd[i].revents & POLLIN)
-        {
-          if(i < SLAVE_OFFSET)
-          {
-            if(pfd[i+SLAVE_OFFSET].fd < 0)
+            switch(i)
             {
-              pfd[i+SLAVE_OFFSET].fd = l2cap_accept(pfd[i].fd);
+              case LISTEN_INDEX:
+                printf("connection error from listening socket (psm: 0x%04x)\n", psm_list[psm]);
+                break;
+              case SLAVE_INDEX:
+                printf("connection error from client (psm: 0x%04x)\n", psm_list[psm]);
+                close(pfd[SLAVE_INDEX][psm].fd);
+                pfd[SLAVE_INDEX][psm].fd = -1;
+                close(pfd[MASTER_INDEX][psm].fd);
+                pfd[MASTER_INDEX][psm].fd = -1;
+                break;
+              case MASTER_INDEX:
+                printf("connection error from server (psm: 0x%04x)\n", psm_list[psm]);
+                close(pfd[MASTER_INDEX][psm].fd);
+                pfd[MASTER_INDEX][psm].fd = -1;
+                close(pfd[SLAVE_INDEX][psm].fd);
+                pfd[SLAVE_INDEX][psm].fd = -1;
+                break;
+            }
+          }
 
-              if(pfd[i+SLAVE_OFFSET].fd > -1)
-              {
-                pfd[i+MASTER_OFFSET].fd = l2cap_connect(slave, master, psm_list[i]);
-
-                if(pfd[i+MASTER_OFFSET].fd < 0)
+          if(pfd[i][psm].revents & POLLIN)
+          {
+            switch(i)
+            {
+              case LISTEN_INDEX:
+                if(pfd[SLAVE_INDEX][psm].fd < 0)
                 {
-                  printf("can't connect to server (psm: 0x%04x)\n", psm_list[i]);
-                  close(pfd[i+SLAVE_OFFSET].fd);
-                  pfd[i+SLAVE_OFFSET].fd = -1;
+                  pfd[SLAVE_INDEX][psm].fd = l2cap_accept(pfd[i][psm].fd);
+
+                  if(pfd[SLAVE_INDEX][psm].fd > -1)
+                  {
+                    pfd[MASTER_INDEX][psm].fd = l2cap_connect(slave, master, psm_list[psm]);
+
+                    if(pfd[MASTER_INDEX][psm].fd < 0)
+                    {
+                      printf("can't connect to server (psm: 0x%04x)\n", psm_list[psm]);
+                      close(pfd[SLAVE_INDEX][psm].fd);
+                      pfd[SLAVE_INDEX][psm].fd = -1;
+                    }
+                  }
+                  else
+                  {
+                    printf("connection error from client (psm: 0x%04x)\n", psm_list[psm]);
+                  }
                 }
-              }
-              else
-              {
-                printf("connection error from client (psm: 0x%04x)\n", psm_list[i]);
-              }
-            }
-            else
-            {
-              fprintf(stderr, "psm already used: 0x%04x\n", psm_list[i]);
-            }
-          }
-          else if(i >= SLAVE_OFFSET && i < MASTER_OFFSET)
-          {
-            len = recv(pfd[i].fd, buf, 1024, MSG_DONTWAIT);
-            if (len > 0)
-            {
-              send(pfd[i+MAX_FDS/3].fd, buf, len, MSG_DONTWAIT);
-              if(debug)
-              {
-                printf("CLIENT > SERVER (psm: 0x%04x)\n", psm_list[i-SLAVE_OFFSET]);
-                dump(buf, len);
-              }
-            }
-            else if(errno != EINTR)
-            {
-              printf("connection error from client (psm: 0x%04x)\n", psm_list[i-SLAVE_OFFSET]);
-              close(pfd[i].fd);
-              pfd[i].fd = -1;
-              close(pfd[i+SLAVE_OFFSET].fd);
-              pfd[i+SLAVE_OFFSET].fd = -1;
-            }
-          }
-          else
-          {
-            len = recv(pfd[i].fd, buf, 1024, MSG_DONTWAIT);
-            if (len > 0)
-            {
-              send(pfd[i-SLAVE_OFFSET].fd, buf, len, MSG_DONTWAIT);
-              if(debug)
-              {
-                printf("SERVER > CLIENT (psm: 0x%04x)\n", psm_list[i-MASTER_OFFSET]);
-                dump(buf, len);
-              }
-            }
-            else if(errno != EINTR)
-            {
-              printf("connection error from server (psm: 0x%04x)\n", psm_list[i-MASTER_OFFSET]);
-              close(pfd[i].fd);
-              pfd[i].fd = -1;
-              close(pfd[i-SLAVE_OFFSET].fd);
-              pfd[i-SLAVE_OFFSET].fd = -1;
+                else
+                {
+                  fprintf(stderr, "psm already used: 0x%04x\n", psm_list[psm]);
+                }
+                break;
+              case SLAVE_INDEX:
+                len = recv(pfd[SLAVE_INDEX][psm].fd, buf, 1024, MSG_DONTWAIT);
+                if (len > 0)
+                {
+                  send(pfd[MASTER_INDEX][psm].fd, buf, len, MSG_DONTWAIT);
+                  if(debug)
+                  {
+                    printf("CLIENT > SERVER (psm: 0x%04x)\n", psm_list[psm]);
+                    dump(buf, len);
+                  }
+                }
+                else if(errno != EINTR)
+                {
+                  printf("connection error from client (psm: 0x%04x)\n", psm_list[psm]);
+                  close(pfd[SLAVE_INDEX][psm].fd);
+                  pfd[SLAVE_INDEX][psm].fd = -1;
+                  close(pfd[MASTER_INDEX][psm].fd);
+                  pfd[MASTER_INDEX][psm].fd = -1;
+                }
+                break;
+              case MASTER_INDEX:
+                len = recv(pfd[MASTER_INDEX][psm].fd, buf, 1024, MSG_DONTWAIT);
+                if (len > 0)
+                {
+                  send(pfd[SLAVE_INDEX][psm].fd, buf, len, MSG_DONTWAIT);
+                  if(debug)
+                  {
+                    printf("SERVER > CLIENT (psm: 0x%04x)\n", psm_list[psm]);
+                    dump(buf, len);
+                  }
+                }
+                else if(errno != EINTR)
+                {
+                  printf("connection error from server (psm: 0x%04x)\n", psm_list[psm]);
+                  close(pfd[MASTER_INDEX][psm].fd);
+                  pfd[MASTER_INDEX][psm].fd = -1;
+                  close(pfd[SLAVE_INDEX][psm].fd);
+                  pfd[SLAVE_INDEX][psm].fd = -1;
+                }
+                break;
             }
           }
         }
@@ -247,11 +255,11 @@ int main(int argc, char *argv[])
     }
   }
 
-  for(i=MAX_FDS-1; i>-1; --i)
+  for(i=0; i<3; ++i)
   {
-    if(pfd[i].fd > -1)
+    for(psm=0; psm<PSM_MAX_INDEX; ++psm)
     {
-      close(pfd[i].fd);
+      close(pfd[i][psm].fd);
     }
   }
 
