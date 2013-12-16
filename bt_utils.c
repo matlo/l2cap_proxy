@@ -4,17 +4,8 @@
 */
 
 #include <bluetooth/bluetooth.h>
-
-/*
-This include doesn't work... I don't now why and I will solve that latter.
-
+#include <bluetooth/hci.h>
 #include <bluetooth/hci_lib.h>
-
-Next extern declarations remove the compilation warnings.
-*/
-extern int hci_open_dev(int dev_id);
-extern int hci_read_bd_addr(int dd, bdaddr_t *bdaddr, int to);
-extern int hci_write_class_of_dev(int dd, uint32_t cls, int to);
 
 /*
  * \brief This function gets the bluetooth device address for a given device number.
