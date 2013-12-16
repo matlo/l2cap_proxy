@@ -19,6 +19,8 @@
 #include <sys/types.h>
 #include "bt_utils.h"
 
+//#define PS4_TWEAKS
+
 /*
  * https://www.bluetooth.org/en-us/specification/assigned-numbers/logical-link-control
  */
@@ -108,11 +110,19 @@ int main(int argc, char *argv[])
     return 1;
   }
 
+  /*
+   * TODO: get the right device number
+   */
   if(write_device_class(0, device_class) < 0)
   {
     printf("failed to set device class\n");
     return 1;
   }
+
+#ifdef PS4_TWEAKS
+  //TODO: fix device number
+  delete_stored_link_key(0, master);
+#endif
 
   /*
    * table 1: fds to accept new connections
@@ -167,6 +177,20 @@ int main(int argc, char *argv[])
                 pfd[SLAVE_INDEX][psm].fd = -1;
                 close(pfd[MASTER_INDEX][psm].fd);
                 pfd[MASTER_INDEX][psm].fd = -1;
+
+#ifdef PS4_TWEAKS
+                if(psm == PSM_SDP)
+                {
+                  unsigned char lk[16] =
+                  {
+                      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+                  };
+                  //TODO: fix device number
+                  write_stored_link_key(0, master, lk);
+                }
+#endif
+
                 break;
               case MASTER_INDEX:
                 printf("connection error from server (psm: 0x%04x)\n", psm_list[psm]);
@@ -185,6 +209,14 @@ int main(int argc, char *argv[])
               case LISTEN_INDEX:
                 if(pfd[SLAVE_INDEX][psm].fd < 0)
                 {
+#ifdef PS4_TWEAKS
+                  if(psm == PSM_HID_Control)
+                  {
+                    authenticate_link(master);
+                    encrypt_link(master);
+                  }
+#endif
+
                   pfd[SLAVE_INDEX][psm].fd = l2cap_accept(pfd[i][psm].fd);
 
                   if(pfd[SLAVE_INDEX][psm].fd > -1)

@@ -3,6 +3,9 @@
    License: GPLv3
 */
 
+#include <stdlib.h>
+#include <sys/ioctl.h>
+#include <unistd.h>
 #include <bluetooth/bluetooth.h>
 #include <bluetooth/hci.h>
 #include <bluetooth/hci_lib.h>
@@ -13,23 +16,30 @@
  * \brief This function gets the bluetooth device address for a given device number.
  *
  * \param device_number  the device number
- * \param bdaddr         the buffer to store the bluetooth device address
+ * \param bdaddr     the buffer to store the bluetooth device address
  *
  * \return 0 if successful, -1 otherwise
  */
 int get_device_bdaddr(int device_number, char bdaddr[18])
 {
-    bdaddr_t bda;
+  int ret = 0;
 
-    int s = hci_open_dev (device_number);
+  bdaddr_t bda;
 
-    if(hci_read_bd_addr(s, &bda, HCI_REQ_TIMEOUT) < 0)
-    {
-        return -1;
-    }
+  int s = hci_open_dev (device_number);
 
+  if(hci_read_bd_addr(s, &bda, HCI_REQ_TIMEOUT) < 0)
+  {
+    ret = -1;
+  }
+  else
+  {
     ba2str(&bda, bdaddr);
-    return 0;
+  }
+
+  close(s);
+
+  return ret;
 }
 
 /*
@@ -41,66 +51,136 @@ int get_device_bdaddr(int device_number, char bdaddr[18])
  */
 int write_device_class(int device_number, uint32_t class)
 {
-    int s = hci_open_dev (device_number);
+  int ret = 0;
 
-    if(hci_write_class_of_dev(s, class, HCI_REQ_TIMEOUT) < 0)
-    {
-        return -1;
-    }
+  int s = hci_open_dev (device_number);
 
-    return 0;
+  if(hci_write_class_of_dev(s, class, HCI_REQ_TIMEOUT) < 0)
+  {
+    ret = -1;
+  }
+
+  close(s);
+
+  return ret;
 }
 
 int delete_stored_link_key(int device_number, char* bdaddr)
 {
-    int s = hci_open_dev (device_number);
+  int ret = 0;
 
-    bdaddr_t bda;
-    str2ba(bdaddr, &bda);
+  int s = hci_open_dev (device_number);
 
-    if(hci_delete_stored_link_key(s, &bda, 0, HCI_REQ_TIMEOUT) < 0)
-    {
-        return -1;
-    }
+  bdaddr_t bda;
+  str2ba(bdaddr, &bda);
 
-    return 0;
+  if(hci_delete_stored_link_key(s, &bda, 0, HCI_REQ_TIMEOUT) < 0)
+  {
+    ret = -1;
+  }
+
+  close(s);
+
+  return ret;
 }
 
 int write_stored_link_key(int device_number, char* bdaddr, unsigned char* key)
 {
-    int s = hci_open_dev (device_number);
+  int ret = 0;
 
-    bdaddr_t bda;
-    str2ba(bdaddr, &bda);
+  int s = hci_open_dev (device_number);
 
-    if(hci_write_stored_link_key(s, &bda, key, HCI_REQ_TIMEOUT) < 0)
-    {
-        return -1;
-    }
+  bdaddr_t bda;
+  str2ba(bdaddr, &bda);
 
-    return 0;
+  if(hci_write_stored_link_key(s, &bda, key, HCI_REQ_TIMEOUT) < 0)
+  {
+    ret = -1;
+  }
+
+  close(s);
+
+  return ret;
 }
 
-int authenticate_link(int device_number, unsigned short handle)
+int authenticate_link(char* bdaddr)
 {
-    int s = hci_open_dev (device_number);
+  int ret = 0;
 
-    if(hci_authenticate_link(s, handle, HCI_REQ_TIMEOUT) < 0)
+  int err = 0, dd;
+  struct hci_conn_info_req *cr = 0;
+
+  // find the connection handle to the specified bluetooth device
+  cr = (struct hci_conn_info_req*) malloc(
+      sizeof(struct hci_conn_info_req) +
+      sizeof(struct hci_conn_info));
+
+  str2ba(bdaddr, &cr->bdaddr);
+
+  cr->type = ACL_LINK;
+  dd = hci_open_dev( hci_get_route( &cr->bdaddr ) );
+  if( dd < 0 ) {
+    ret = -1;
+  }
+  else
+  {
+    err = ioctl(dd, HCIGETCONNINFO, (unsigned long) cr );
+    if( !err )
     {
-        return -1;
+      if(hci_authenticate_link(dd, cr->conn_info->handle, HCI_REQ_TIMEOUT) < 0)
+      {
+        ret = -1;
+      }
     }
+    else
+    {
+      ret = -1;
+    }
+  }
 
-    return 0;
+  free(cr);
+  close(dd);
+
+  return ret;
 }
 
-int encrypt_link(int device_number, unsigned short handle)
+int encrypt_link(char* bdaddr)
 {
-    int s = hci_open_dev (device_number);
+  int ret = 0;
 
-    if(hci_encrypt_link(s, handle, 0x01, HCI_REQ_TIMEOUT) < 0)
+  int err = 0, dd;
+  struct hci_conn_info_req *cr = 0;
+
+  // find the connection handle to the specified bluetooth device
+  cr = (struct hci_conn_info_req*) malloc(
+      sizeof(struct hci_conn_info_req) +
+      sizeof(struct hci_conn_info));
+
+  str2ba(bdaddr, &cr->bdaddr);
+
+  cr->type = ACL_LINK;
+  dd = hci_open_dev( hci_get_route( &cr->bdaddr ) );
+  if( dd < 0 ) {
+    ret = -1;
+  }
+  else
+  {
+    err = ioctl(dd, HCIGETCONNINFO, (unsigned long) cr );
+    if( !err )
     {
-        return -1;
+      if(hci_encrypt_link(dd, cr->conn_info->handle, 0x01, HCI_REQ_TIMEOUT) < 0)
+      {
+        ret = -1;
+      }
     }
+    else
+    {
+      ret = -1;
+    }
+  }
 
-    return 0;
+  free(cr);
+  close(dd);
+
+  return ret;
 }
