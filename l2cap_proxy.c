@@ -110,18 +110,18 @@ int main(int argc, char *argv[])
     return 1;
   }
 
-  /*
-   * TODO: get the right device number
-   */
-  if(write_device_class(0, device_class) < 0)
+  if(write_device_class(slave, device_class) < 0)
   {
     printf("failed to set device class\n");
     return 1;
   }
 
 #ifdef PS4_TWEAKS
-  //TODO: fix device number
-  delete_stored_link_key(0, master);
+  if(delete_stored_link_key(slave, master) < 0)
+  {
+    printf("failed to delete stored link key\n");
+    return -1;
+  }
 #endif
 
   /*
@@ -186,8 +186,11 @@ int main(int argc, char *argv[])
                       0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
                       0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
                   };
-                  //TODO: fix device number
-                  write_stored_link_key(0, master, lk);
+                  if(write_stored_link_key(slave, master, lk) < 0)
+                  {
+                    printf("failed to write stored link key\n");
+                    done = 1;
+                  }
                 }
 #endif
 
@@ -212,8 +215,16 @@ int main(int argc, char *argv[])
 #ifdef PS4_TWEAKS
                   if(psm == PSM_HID_Control)
                   {
-                    authenticate_link(master);
-                    encrypt_link(master);
+                    if(authenticate_link(master) < 0)
+                    {
+                      printf("failed to write stored link key\n");
+                      done = 1;
+                    }
+                    if(encrypt_link(master) < 0)
+                    {
+                      printf("failed to write stored link key\n");
+                      done = 1;
+                    }
                   }
 #endif
 

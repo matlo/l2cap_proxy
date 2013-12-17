@@ -42,6 +42,22 @@ int get_device_bdaddr(int device_number, char bdaddr[18])
   return ret;
 }
 
+int get_device_id(char* bdaddr)
+{
+  int id = 0;
+
+  if(bdaddr)
+  {
+    id = hci_devid(bdaddr);
+  }
+  else
+  {
+    id = hci_get_route(NULL);
+  }
+
+  return id;
+}
+
 /*
  * \brief This function writes the bluetooth device class for a given device number.
  *
@@ -49,11 +65,18 @@ int get_device_bdaddr(int device_number, char bdaddr[18])
  *
  * \return 0 if successful, -1 otherwise
  */
-int write_device_class(int device_number, uint32_t class)
+int write_device_class(char* bdaddr, uint32_t class)
 {
   int ret = 0;
 
-  int s = hci_open_dev (device_number);
+  int id = get_device_id(bdaddr);
+
+  if(id < 0)
+  {
+    return -1;
+  }
+
+  int s = hci_open_dev (id);
 
   if(hci_write_class_of_dev(s, class, HCI_REQ_TIMEOUT) < 0)
   {
@@ -65,14 +88,21 @@ int write_device_class(int device_number, uint32_t class)
   return ret;
 }
 
-int delete_stored_link_key(int device_number, char* bdaddr)
+int delete_stored_link_key(char* bdaddr, char* bdaddr_dest)
 {
   int ret = 0;
 
-  int s = hci_open_dev (device_number);
+  int id = get_device_id(bdaddr);
+
+  if(id < 0)
+  {
+    return -1;
+  }
+
+  int s = hci_open_dev (id);
 
   bdaddr_t bda;
-  str2ba(bdaddr, &bda);
+  str2ba(bdaddr_dest, &bda);
 
   if(hci_delete_stored_link_key(s, &bda, 0, HCI_REQ_TIMEOUT) < 0)
   {
@@ -84,14 +114,21 @@ int delete_stored_link_key(int device_number, char* bdaddr)
   return ret;
 }
 
-int write_stored_link_key(int device_number, char* bdaddr, unsigned char* key)
+int write_stored_link_key(char* bdaddr, char* bdaddr_dest, unsigned char* key)
 {
   int ret = 0;
 
-  int s = hci_open_dev (device_number);
+  int id = get_device_id(bdaddr);
+
+  if(id < 0)
+  {
+    return -1;
+  }
+
+  int s = hci_open_dev (id);
 
   bdaddr_t bda;
-  str2ba(bdaddr, &bda);
+  str2ba(bdaddr_dest, &bda);
 
   if(hci_write_stored_link_key(s, &bda, key, HCI_REQ_TIMEOUT) < 0)
   {
@@ -103,7 +140,7 @@ int write_stored_link_key(int device_number, char* bdaddr, unsigned char* key)
   return ret;
 }
 
-int authenticate_link(char* bdaddr)
+int authenticate_link(char* bdaddr_dest)
 {
   int ret = 0;
 
@@ -115,7 +152,7 @@ int authenticate_link(char* bdaddr)
       sizeof(struct hci_conn_info_req) +
       sizeof(struct hci_conn_info));
 
-  str2ba(bdaddr, &cr->bdaddr);
+  str2ba(bdaddr_dest, &cr->bdaddr);
 
   cr->type = ACL_LINK;
   dd = hci_open_dev( hci_get_route( &cr->bdaddr ) );
@@ -144,7 +181,7 @@ int authenticate_link(char* bdaddr)
   return ret;
 }
 
-int encrypt_link(char* bdaddr)
+int encrypt_link(char* bdaddr_dest)
 {
   int ret = 0;
 
@@ -156,7 +193,7 @@ int encrypt_link(char* bdaddr)
       sizeof(struct hci_conn_info_req) +
       sizeof(struct hci_conn_info));
 
-  str2ba(bdaddr, &cr->bdaddr);
+  str2ba(bdaddr_dest, &cr->bdaddr);
 
   cr->type = ACL_LINK;
   dd = hci_open_dev( hci_get_route( &cr->bdaddr ) );
