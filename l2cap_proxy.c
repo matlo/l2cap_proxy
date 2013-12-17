@@ -21,6 +21,14 @@
 
 #define PS4_TWEAKS
 
+#ifdef PS4_TWEAKS
+unsigned char lk[16] =
+{
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+};
+#endif
+
 /*
  * https://www.bluetooth.org/en-us/specification/assigned-numbers/logical-link-control
  */
@@ -181,14 +189,19 @@ int main(int argc, char *argv[])
 #ifdef PS4_TWEAKS
                 if(psm_list[psm] == PSM_SDP)
                 {
-                  unsigned char lk[16] =
-                  {
-                      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
-                  };
                   if(write_stored_link_key(slave, master, lk) < 0)
                   {
                     printf("failed to write stored link key\n");
+                    done = 1;
+                  }
+                  if(authenticate_link(master) < 0)
+                  {
+                    printf("failed to authenticate link\n");
+                    done = 1;
+                  }
+                  if(encrypt_link(master) < 0)
+                  {
+                    printf("failed to encrypt link\n");
                     done = 1;
                   }
                 }
@@ -212,22 +225,6 @@ int main(int argc, char *argv[])
               case LISTEN_INDEX:
                 if(pfd[SLAVE_INDEX][psm].fd < 0)
                 {
-#ifdef PS4_TWEAKS
-                  if(psm_list[psm] == PSM_HID_Control)
-                  {
-                    if(authenticate_link(master) < 0)
-                    {
-                      printf("failed to authenticate link\n");
-                      done = 1;
-                    }
-                    if(encrypt_link(master) < 0)
-                    {
-                      printf("failed to encrypt link\n");
-                      done = 1;
-                    }
-                  }
-#endif
-
                   pfd[SLAVE_INDEX][psm].fd = l2cap_accept(pfd[i][psm].fd);
 
                   if(pfd[SLAVE_INDEX][psm].fd > -1)
