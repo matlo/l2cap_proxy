@@ -19,7 +19,7 @@
 #include <sys/types.h>
 #include "bt_utils.h"
 
-//#define PS4_TWEAKS
+#define PS4_TWEAKS
 
 /*
  * https://www.bluetooth.org/en-us/specification/assigned-numbers/logical-link-control
@@ -179,7 +179,7 @@ int main(int argc, char *argv[])
                 pfd[MASTER_INDEX][psm].fd = -1;
 
 #ifdef PS4_TWEAKS
-                if(psm == PSM_SDP)
+                if(psm_list[psm] == PSM_SDP)
                 {
                   unsigned char lk[16] =
                   {
@@ -213,7 +213,7 @@ int main(int argc, char *argv[])
                 if(pfd[SLAVE_INDEX][psm].fd < 0)
                 {
 #ifdef PS4_TWEAKS
-                  if(psm == PSM_HID_Control)
+                  if(psm_list[psm] == PSM_HID_Control)
                   {
                     if(authenticate_link(master) < 0)
                     {
