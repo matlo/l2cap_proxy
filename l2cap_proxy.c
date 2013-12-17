@@ -217,12 +217,12 @@ int main(int argc, char *argv[])
                   {
                     if(authenticate_link(master) < 0)
                     {
-                      printf("failed to write stored link key\n");
+                      printf("failed to authenticate link\n");
                       done = 1;
                     }
                     if(encrypt_link(master) < 0)
                     {
-                      printf("failed to write stored link key\n");
+                      printf("failed to encrypt link\n");
                       done = 1;
                     }
                   }
