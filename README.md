@@ -26,8 +26,14 @@ Run the proxy
 -------------
 ```
 sudo service bluetooth stop  
-sudo hciconfig hci0 up pscan  
+sudo hciconfig hci<X> up pscan  
 sudo ./l2cap <master-bdaddr> <dongle-bdaddr> <device-class>  
+```
+```
+<X>: the device number (type hciconfig to list the available adapters)  
+<master-bdaddr>: the bdaddr of the l2cap listener (mandatory)  
+<dongle-bdaddr>: the bdaddr of the adapter to use to connect to the l2cap listener (optional; the first adapter is used in case none is specified)  
+<device-class>: the device class to be applied to the adapter (optional; requires <dongle-bdaddr>; the default one is 0x508)  
 ```
 
 In Debian the bluetooth service is automatically started when a device tries to connect.  
