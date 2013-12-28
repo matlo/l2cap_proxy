@@ -34,7 +34,7 @@ In Debian the bluetooth service is automatically started when a device tries to 
 This is annoying since it will intercept the connection requests.  
 To disable the service, run the following command and reboot:  
 ```
-sudo update-rc.d triggerhappy disable  
+sudo update-rc.d bluetooth disable  
 ```
 Moving the bluetoothd binary will also prevent it from being started:  
 ```
