@@ -6,8 +6,8 @@
 #ifndef BT_UTILS_H_
 #define BT_UTILS_H_
 
-int get_device_bdaddr(int device_number, char bdaddr[18]);
-int write_device_class(char* bdaddr, uint32_t class);
+int bt_get_device_bdaddr(int device_number, char bdaddr[18]);
+int bt_write_device_class(char* bdaddr, uint32_t class);
 
 int delete_stored_link_key(char* bdaddr, char* bdaddr_dest);
 int write_stored_link_key(char* bdaddr, char* bdaddr_dest, unsigned char* key);

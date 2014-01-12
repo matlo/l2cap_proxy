@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <stdlib.h>
+#include "bt_utils.h"
 
 #ifdef BT_POWER
 #warning "BT_POWER is already defined."

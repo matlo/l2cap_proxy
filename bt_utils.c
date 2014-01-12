@@ -20,7 +20,7 @@
  *
  * \return 0 if successful, -1 otherwise
  */
-int get_device_bdaddr(int device_number, char bdaddr[18])
+int bt_get_device_bdaddr(int device_number, char bdaddr[18])
 {
   int ret = 0;
 
@@ -65,7 +65,7 @@ int get_device_id(char* bdaddr)
  *
  * \return 0 if successful, -1 otherwise
  */
-int write_device_class(char* bdaddr, uint32_t class)
+int bt_write_device_class(char* bdaddr, uint32_t class)
 {
   int ret = 0;
 

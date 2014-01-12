@@ -19,7 +19,7 @@
 #include <sys/types.h>
 #include "bt_utils.h"
 
-#define PS4_TWEAKS
+#include <sched.h>
 
 #ifdef PS4_TWEAKS
 unsigned char lk[16] =
@@ -101,6 +101,16 @@ int main(int argc, char *argv[])
   unsigned char buf[1024];
   ssize_t len;
 
+  /*
+   * Set highest priority & scheduler policy.
+   */
+  struct sched_param p =
+  { .sched_priority = sched_get_priority_max(SCHED_FIFO) };
+
+  sched_setscheduler(0, SCHED_FIFO, &p);
+
+  setlinebuf(stdout);
+
   (void) signal(SIGINT, terminate);
 
   /* Check args */
@@ -118,7 +128,7 @@ int main(int argc, char *argv[])
     return 1;
   }
 
-  if(write_device_class(slave, device_class) < 0)
+  if(bt_write_device_class(slave, device_class) < 0)
   {
     printf("failed to set device class\n");
     return 1;
@@ -177,10 +187,10 @@ int main(int argc, char *argv[])
             switch(i)
             {
               case LISTEN_INDEX:
-                printf("connection error from listening socket (psm: 0x%04x)\n", psm_list[psm]);
+                printf("poll error from listening socket (psm: 0x%04x)\n", psm_list[psm]);
                 break;
               case SLAVE_INDEX:
-                printf("connection error from client (psm: 0x%04x)\n", psm_list[psm]);
+                printf("poll error from client (psm: 0x%04x)\n", psm_list[psm]);
                 close(pfd[SLAVE_INDEX][psm].fd);
                 pfd[SLAVE_INDEX][psm].fd = -1;
                 close(pfd[MASTER_INDEX][psm].fd);
@@ -209,7 +219,7 @@ int main(int argc, char *argv[])
 
                 break;
               case MASTER_INDEX:
-                printf("connection error from server (psm: 0x%04x)\n", psm_list[psm]);
+                printf("poll error from server (psm: 0x%04x)\n", psm_list[psm]);
                 close(pfd[MASTER_INDEX][psm].fd);
                 pfd[MASTER_INDEX][psm].fd = -1;
                 close(pfd[SLAVE_INDEX][psm].fd);
@@ -240,7 +250,7 @@ int main(int argc, char *argv[])
                   }
                   else
                   {
-                    printf("connection error from client (psm: 0x%04x)\n", psm_list[psm]);
+                    printf("accept error from client (psm: 0x%04x)\n", psm_list[psm]);
                   }
                 }
                 else
@@ -261,7 +271,7 @@ int main(int argc, char *argv[])
                 }
                 else if(errno != EINTR)
                 {
-                  printf("connection error from client (psm: 0x%04x)\n", psm_list[psm]);
+                  printf("recv error from client (psm: 0x%04x)\n", psm_list[psm]);
                   close(pfd[SLAVE_INDEX][psm].fd);
                   pfd[SLAVE_INDEX][psm].fd = -1;
                   close(pfd[MASTER_INDEX][psm].fd);
@@ -281,7 +291,7 @@ int main(int argc, char *argv[])
                 }
                 else if(errno != EINTR)
                 {
-                  printf("connection error from server (psm: 0x%04x)\n", psm_list[psm]);
+                  printf("recv error from server (psm: 0x%04x)\n", psm_list[psm]);
                   close(pfd[MASTER_INDEX][psm].fd);
                   pfd[MASTER_INDEX][psm].fd = -1;
                   close(pfd[SLAVE_INDEX][psm].fd);
