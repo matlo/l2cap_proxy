@@ -6,10 +6,13 @@ It performs like this:
 
 bt device <----> PC <----> bt master  
 
-It was only tested with a PS3 and a DS3 (which implements the HID profile).  
+It was tested with:  
+* a PS3 and a DS3 (runs over the HID control + HID interrupt PSMs)
+* a PS4 and a DS4 (runs over the SDP + HID control + HID interrupt PSMs)
+
 It should work without modification for all the predefined l2cap PSMs (https://www.bluetooth.org/en-us/specification/assigned-numbers/logical-link-control).  
 Other PSMs can be easily added in the source code.  
-It only runs on Linux (tested with Ubuntu and Debian), and it requires a bluetooth dongle.  
+It only runs on Linux (tested with Ubuntu and Debian), and it requires at least one bluetooth dongle (two may be useful for high packet rates).  
 The master and the device have to be paired with the bluetooth dongle.  
 
 Compilation
@@ -20,6 +23,17 @@ sudo apt-get install git
 git clone https://github.com/matlo/l2cap_proxy.git  
 cd l2cap_proxy  
 make  
+```
+
+Bluetooth authentication
+------------------------
+
+For bluetooth devices that use authentication like the PS4/DS4, a link key has to be provided to the linux kernel.  
+This can be done with the following commands:
+```
+sudo service bluetooth stop  
+sudo echo "<bdaddr> <link key> 4 0" >> /var/lib/bluetooth/<dongle bdaddr>/linkkeys
+sudo service bluetooth start  
 ```
 
 Run the proxy
