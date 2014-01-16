@@ -107,7 +107,11 @@ int l2cap_connect(const char *bdaddr_src, const char *bdaddr_dest, unsigned shor
     memset(&addr, 0, sizeof(addr));
     addr.l2_family = AF_BLUETOOTH;
     str2ba(bdaddr_src, &addr.l2_bdaddr);
-    bind(fd, (struct sockaddr *)&addr, sizeof(addr));
+    if(bind(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0)
+    {
+      perror("bind\n");
+      exit(-1);
+    }
   }
 
   memset(&addr, 0, sizeof(addr));
