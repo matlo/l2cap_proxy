@@ -21,13 +21,7 @@
 
 #include <sched.h>
 
-#ifdef PS4_TWEAKS
-unsigned char lk[16] =
-{
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
-};
-#endif
+
 
 /*
  * https://www.bluetooth.org/en-us/specification/assigned-numbers/logical-link-control
@@ -100,6 +94,7 @@ int main(int argc, char *argv[])
   uint32_t device_class = 0x508;
   unsigned char buf[1024];
   ssize_t len;
+  int ret;
 
   /*
    * Set highest priority & scheduler policy.
@@ -133,14 +128,6 @@ int main(int argc, char *argv[])
     printf("failed to set device class\n");
     return 1;
   }
-
-#ifdef PS4_TWEAKS
-  if(delete_stored_link_key(slave, master) < 0)
-  {
-    printf("failed to delete stored link key\n");
-    return -1;
-  }
-#endif
 
   /*
    * table 1: fds to accept new connections
@@ -195,28 +182,6 @@ int main(int argc, char *argv[])
                 pfd[SLAVE_INDEX][psm].fd = -1;
                 close(pfd[MASTER_INDEX][psm].fd);
                 pfd[MASTER_INDEX][psm].fd = -1;
-
-#ifdef PS4_TWEAKS
-                if(psm_list[psm] == PSM_SDP)
-                {
-                  if(write_stored_link_key(slave, master, lk) < 0)
-                  {
-                    printf("failed to write stored link key\n");
-                    done = 1;
-                  }
-                  if(authenticate_link(master) < 0)
-                  {
-                    printf("failed to authenticate link\n");
-                    done = 1;
-                  }
-                  if(encrypt_link(master) < 0)
-                  {
-                    printf("failed to encrypt link\n");
-                    done = 1;
-                  }
-                }
-#endif
-
                 break;
               case MASTER_INDEX:
                 printf("poll error from server (psm: 0x%04x)\n", psm_list[psm]);
@@ -259,10 +224,14 @@ int main(int argc, char *argv[])
                 }
                 break;
               case SLAVE_INDEX:
-                len = recv(pfd[SLAVE_INDEX][psm].fd, buf, 1024, MSG_DONTWAIT);
+                len = read(pfd[SLAVE_INDEX][psm].fd, buf, sizeof(buf));
                 if (len > 0)
                 {
-                  send(pfd[MASTER_INDEX][psm].fd, buf, len, MSG_DONTWAIT);
+                  ret = write(pfd[MASTER_INDEX][psm].fd, buf, len);
+                  if(ret < 0)
+                  {
+                    printf("write error (CLIENT > SERVER) (psm: 0x%04x)\n", psm_list[psm]);
+                  }
                   if(debug)
                   {
                     printf("CLIENT > SERVER (psm: 0x%04x)\n", psm_list[psm]);
@@ -277,12 +246,20 @@ int main(int argc, char *argv[])
                   close(pfd[MASTER_INDEX][psm].fd);
                   pfd[MASTER_INDEX][psm].fd = -1;
                 }
+                else
+                {
+                  printf("write interrupted (CLIENT > SERVER) (psm: 0x%04x)\n", psm_list[psm]);
+                }
                 break;
               case MASTER_INDEX:
-                len = recv(pfd[MASTER_INDEX][psm].fd, buf, 1024, MSG_DONTWAIT);
+                len = read(pfd[MASTER_INDEX][psm].fd, buf, sizeof(buf));
                 if (len > 0)
                 {
-                  send(pfd[SLAVE_INDEX][psm].fd, buf, len, MSG_DONTWAIT);
+                  ret = write(pfd[SLAVE_INDEX][psm].fd, buf, len);
+                  if(ret < 0)
+                  {
+                    printf("write error (SERVER > CLIENT) (psm: 0x%04x)\n", psm_list[psm]);
+                  }
                   if(debug)
                   {
                     printf("SERVER > CLIENT (psm: 0x%04x)\n", psm_list[psm]);
@@ -296,6 +273,10 @@ int main(int argc, char *argv[])
                   pfd[MASTER_INDEX][psm].fd = -1;
                   close(pfd[SLAVE_INDEX][psm].fd);
                   pfd[SLAVE_INDEX][psm].fd = -1;
+                }
+                else
+                {
+                  printf("write interrupted (SERVER > CLIENT) (psm: 0x%04x)\n", psm_list[psm]);
                 }
                 break;
             }
