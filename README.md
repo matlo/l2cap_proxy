@@ -69,7 +69,7 @@ sudo apt-get install bluez-hcidump
 sudo hcidump -l 4096 -w capture.dump  
 ```
 
-Power on the bluetooth device.  
+Power on the bluetooth device. It should connect to the proxy, which should in turn connect to the bluetooth master.  
 To stop the capture (hcidump), press ctrl+c.  
   
 capture.dump can be opened with wireshark.  
