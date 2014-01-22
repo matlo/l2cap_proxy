@@ -47,7 +47,7 @@ int l2cap_listen(unsigned short psm)
   }
 
   // put socket into listening mode
-  if(listen(s, 1) < 0)
+  if(listen(s, 10) < 0)
   {
     perror("listen");
     exit(-1);

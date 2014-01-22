@@ -3,6 +3,9 @@
  License: GPLv3
  */
 
+#ifndef L2CAP_CON_H_
+#define L2CAP_CON_H_
+
 int l2cap_connect(const char*, const char*, int);
 
 int l2cap_send(int, const unsigned char*, int, int);
@@ -13,6 +16,4 @@ int l2cap_listen(int);
 
 int l2cap_accept(int);
 
-#ifdef WIN32
-int bachk(const char *str);
 #endif
