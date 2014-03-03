@@ -41,7 +41,7 @@ Run the proxy
 ```
 sudo service bluetooth stop  
 sudo hciconfig hci<X> up pscan  
-sudo ./l2cap <master-bdaddr> <dongle-bdaddr> <device-class>  
+sudo ./l2cap_proxy <master-bdaddr> <dongle-bdaddr> <device-class>  
 ```
 ```
 <X>: the device number (type hciconfig to list the available adapters)  
