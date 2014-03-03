@@ -111,7 +111,6 @@ int main(int argc, char *argv[])
   unsigned char buf[4096];
   ssize_t len;
   int ret;
-  unsigned int cpt = 0;
   bdaddr_t bdaddr_a;
   unsigned short psm_a;
   unsigned short cid_a;
