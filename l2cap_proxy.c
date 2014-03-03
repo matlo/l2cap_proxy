@@ -64,6 +64,16 @@ static unsigned short psm_list[] =
 #define SLAVE_INDEX  1
 #define MASTER_INDEX 2
 
+#define SLAVE_CONNECTING_INDEX 3
+#define MASTER_CONNECTING_INDEX 4
+
+#define MAX_INDEX 5
+
+#define CID_SLAVE_INDEX 0
+#define CID_MASTER_INDEX 1
+
+#define CID_MAX_INDEX 2
+
 static int debug = 0;
 
 static volatile int done = 0;
@@ -87,14 +97,28 @@ void dump(unsigned char* buf, int len)
   printf("\n");
 }
 
+static void close_fd(struct pollfd* pfd)
+{
+  close(pfd->fd);
+  pfd->fd = -1;
+}
+
 int main(int argc, char *argv[])
 {
   char* master = NULL;
-  char* slave = NULL;
+  char* local = NULL;
   uint32_t device_class = 0x508;
-  unsigned char buf[1024];
+  unsigned char buf[4096];
   ssize_t len;
   int ret;
+  unsigned int cpt = 0;
+  bdaddr_t bdaddr_a;
+  unsigned short psm_a;
+  unsigned short cid_a;
+  int fd_a;
+  bdaddr_t bdaddr_m;
+  char slave[sizeof("00:00:00:00:00:00")+1] = {};
+  unsigned short cid[CID_MAX_INDEX][PSM_MAX_INDEX];
 
   /*
    * Set highest priority & scheduler policy.
@@ -113,17 +137,19 @@ int main(int argc, char *argv[])
     master = argv[1];
 
   if (argc >= 2)
-    slave = argv[2];
+    local = argv[2];
 
   if (argc >= 3)
     device_class = strtol(argv[3], NULL, 0);
 
-  if (!master || bachk(master) == -1 || (slave && bachk(slave) == -1)) {
+  if (!master || bachk(master) == -1 || (local && bachk(local) == -1)) {
     printf("usage: %s <ps3-mac-address> <dongle-mac-address> <device-class>\n", *argv);
     return 1;
   }
 
-  if(bt_write_device_class(slave, device_class) < 0)
+  str2ba(master, &bdaddr_m);
+
+  if(bt_write_device_class(local, device_class) < 0)
   {
     printf("failed to set device class\n");
     return 1;
@@ -133,11 +159,14 @@ int main(int argc, char *argv[])
    * table 1: fds to accept new connections
    * table 2: fds connected to the slave
    * table 3: fds connected to the master
+   *
+   * table 4: fds connecting to the slave
+   * table 5: fds connecting to the master
    */
-  struct pollfd pfd[3][PSM_MAX_INDEX] = {};
+  struct pollfd pfd[MAX_INDEX][PSM_MAX_INDEX] = {};
 
   int i, psm;
-  for(i=0; i<3; ++i)
+  for(i=0; i<MAX_INDEX; ++i)
   {
     for(psm=0; psm<PSM_MAX_INDEX; ++psm)
     {
@@ -148,28 +177,18 @@ int main(int argc, char *argv[])
   for(psm=0; psm<PSM_MAX_INDEX; ++psm)
   {
     pfd[LISTEN_INDEX][psm].fd = l2cap_listen(psm_list[psm]);
+    pfd[LISTEN_INDEX][psm].events = POLLIN;
   }
 
   while(!done)
   {
-    for(i=0; i<3; ++i)
+    if(poll(*pfd, MAX_INDEX*PSM_MAX_INDEX, -1))
     {
-      for(psm=0; psm<PSM_MAX_INDEX; ++psm)
-      {
-        if(pfd[i][psm].fd > -1)
-        {
-          pfd[i][psm].events = POLLIN;
-        }
-      }
-    }
-
-    if(poll(*pfd, 3*PSM_MAX_INDEX, -1))
-    {
-      for(i=0; i<3; ++i)
+      for(i=0; i<MAX_INDEX; ++i)
       {
         for(psm=0; psm<PSM_MAX_INDEX; ++psm)
         {
-          if (pfd[i][psm].revents & POLLERR)
+          if (pfd[i][psm].revents & (POLLERR | POLLHUP))
           {
             switch(i)
             {
@@ -177,19 +196,36 @@ int main(int argc, char *argv[])
                 printf("poll error from listening socket (psm: 0x%04x)\n", psm_list[psm]);
                 break;
               case SLAVE_INDEX:
-                printf("poll error from client (psm: 0x%04x)\n", psm_list[psm]);
-                close(pfd[SLAVE_INDEX][psm].fd);
-                pfd[SLAVE_INDEX][psm].fd = -1;
-                close(pfd[MASTER_INDEX][psm].fd);
-                pfd[MASTER_INDEX][psm].fd = -1;
+                printf("poll error from SLAVE (psm: 0x%04x)\n", psm_list[psm]);
+                close_fd(&pfd[SLAVE_INDEX][psm]);
+                close_fd(&pfd[MASTER_INDEX][psm]);
                 break;
               case MASTER_INDEX:
-                printf("poll error from server (psm: 0x%04x)\n", psm_list[psm]);
-                close(pfd[MASTER_INDEX][psm].fd);
-                pfd[MASTER_INDEX][psm].fd = -1;
-                close(pfd[SLAVE_INDEX][psm].fd);
-                pfd[SLAVE_INDEX][psm].fd = -1;
+                printf("poll error from MASTER (psm: 0x%04x)\n", psm_list[psm]);
+                close_fd(&pfd[MASTER_INDEX][psm]);
+                close_fd(&pfd[SLAVE_INDEX][psm]);
                 break;
+            }
+          }
+
+          if(pfd[i][psm].revents & POLLOUT)
+          {
+            if(l2cap_is_connected(pfd[i][psm].fd))
+            {
+              switch(i)
+              {
+                case SLAVE_CONNECTING_INDEX:
+                  printf("connected to %s (psm: 0x%04x)\n", slave, psm_list[psm]);
+                  pfd[SLAVE_INDEX][psm].fd = pfd[i][psm].fd;
+                  pfd[SLAVE_INDEX][psm].events = POLLIN;
+                  break;
+                case MASTER_CONNECTING_INDEX:
+                  printf("connected to %s (psm: 0x%04x)\n", master, psm_list[psm]);
+                  pfd[MASTER_INDEX][psm].fd = pfd[i][psm].fd;
+                  pfd[MASTER_INDEX][psm].events = POLLIN;
+                  break;
+              }
+              pfd[i][psm].fd = -1;
             }
           }
 
@@ -198,85 +234,134 @@ int main(int argc, char *argv[])
             switch(i)
             {
               case LISTEN_INDEX:
-                if(pfd[SLAVE_INDEX][psm].fd < 0)
+
+                fd_a = l2cap_accept(pfd[i][psm].fd, &bdaddr_a, &psm_a, &cid_a);
+
+                if(fd_a < 0)
                 {
-                  pfd[SLAVE_INDEX][psm].fd = l2cap_accept(pfd[i][psm].fd);
+                  printf("accept error (psm: 0x%04x)\n", psm_list[psm]);
+                  break;
+                }
 
-                  if(pfd[SLAVE_INDEX][psm].fd > -1)
+                if(bacmp(&bdaddr_a, &bdaddr_m))
+                {
+                  ba2str(&bdaddr_a, slave);
+                  
+                  cid[CID_SLAVE_INDEX][psm] = cid_a;
+
+                  if(pfd[SLAVE_INDEX][psm].fd < 0)
                   {
-                    pfd[MASTER_INDEX][psm].fd = l2cap_connect(slave, master, psm_list[psm]);
+                    pfd[SLAVE_INDEX][psm].fd = fd_a;
+                    pfd[SLAVE_INDEX][psm].events = POLLIN;
 
-                    if(pfd[MASTER_INDEX][psm].fd < 0)
+                    printf("connecting with %s to %s (psm: 0x%04x)\n", local, master, psm_list[psm]);
+
+                    pfd[MASTER_CONNECTING_INDEX][psm].fd = l2cap_connect(local, master, psm_list[psm]);
+                    pfd[MASTER_CONNECTING_INDEX][psm].events = POLLOUT;
+
+                    if(pfd[MASTER_CONNECTING_INDEX][psm].fd < 0)
                     {
-                      printf("can't connect to server (psm: 0x%04x)\n", psm_list[psm]);
-                      close(pfd[SLAVE_INDEX][psm].fd);
-                      pfd[SLAVE_INDEX][psm].fd = -1;
+                      printf("can't start connection to MASTER (psm: 0x%04x)\n", psm_list[psm]);
+                      close_fd(&pfd[SLAVE_INDEX][psm]);
                     }
                   }
                   else
                   {
-                    printf("accept error from client (psm: 0x%04x)\n", psm_list[psm]);
+                    close(fd_a);
+                    fprintf(stderr, "psm already used: 0x%04x\n", psm_list[psm]);
                   }
                 }
                 else
                 {
-                  fprintf(stderr, "psm already used: 0x%04x\n", psm_list[psm]);
+                  cid[CID_MASTER_INDEX][psm] = cid_a;
+
+                  if(pfd[MASTER_INDEX][psm].fd < 0)
+                  {
+                    pfd[MASTER_INDEX][psm].fd = fd_a;
+                    pfd[MASTER_INDEX][psm].events = POLLIN;
+
+                    printf("connecting with %s to %s (psm: 0x%04x)\n", local, slave, psm_list[psm]);
+
+                    pfd[SLAVE_CONNECTING_INDEX][psm].fd = l2cap_connect(local, slave, psm_list[psm]);
+                    pfd[SLAVE_CONNECTING_INDEX][psm].events = POLLOUT;
+
+                    if(pfd[SLAVE_CONNECTING_INDEX][psm].fd < 0)
+                    {
+                      printf("can't start connection to SLAVE (psm: 0x%04x)\n", psm_list[psm]);
+                      close_fd(&pfd[MASTER_INDEX][psm]);
+                    }
+                  }
+                  else
+                  {
+                    close(fd_a);
+                    fprintf(stderr, "psm already used: 0x%04x\n", psm_list[psm]);
+                  }
                 }
                 break;
               case SLAVE_INDEX:
+                if(pfd[MASTER_INDEX][psm].fd < 0)
+                {
+                  break;
+                }
                 len = read(pfd[SLAVE_INDEX][psm].fd, buf, sizeof(buf));
                 if (len > 0)
                 {
+                  /*
+                   * TODO: send acl packets when packet size is larger than the outgoing MTU size
+                   */
                   ret = write(pfd[MASTER_INDEX][psm].fd, buf, len);
                   if(ret < 0)
                   {
-                    printf("write error (CLIENT > SERVER) (psm: 0x%04x)\n", psm_list[psm]);
+                    printf("write error (SLAVE > MASTER) (psm: 0x%04x)\n", psm_list[psm]);
                   }
                   if(debug)
                   {
-                    printf("CLIENT > SERVER (psm: 0x%04x)\n", psm_list[psm]);
+                    printf("SLAVE > MASTER (psm: 0x%04x)\n", psm_list[psm]);
                     dump(buf, len);
                   }
                 }
                 else if(errno != EINTR)
                 {
-                  printf("recv error from client (psm: 0x%04x)\n", psm_list[psm]);
-                  close(pfd[SLAVE_INDEX][psm].fd);
-                  pfd[SLAVE_INDEX][psm].fd = -1;
-                  close(pfd[MASTER_INDEX][psm].fd);
-                  pfd[MASTER_INDEX][psm].fd = -1;
+                  printf("recv error from SLAVE (psm: 0x%04x)\n", psm_list[psm]);
+                  close_fd(&pfd[SLAVE_INDEX][psm]);
+                  close_fd(&pfd[MASTER_INDEX][psm]);
                 }
                 else
                 {
-                  printf("write interrupted (CLIENT > SERVER) (psm: 0x%04x)\n", psm_list[psm]);
+                  printf("write interrupted (SLAVE > MASTER) (psm: 0x%04x)\n", psm_list[psm]);
                 }
                 break;
               case MASTER_INDEX:
+                if(pfd[SLAVE_INDEX][psm].fd < 0)
+                {
+                  break;
+                }
                 len = read(pfd[MASTER_INDEX][psm].fd, buf, sizeof(buf));
                 if (len > 0)
                 {
+                  /*
+                   * TODO: send acl packets when packet size is larger than the outgoing MTU size
+                   */
                   ret = write(pfd[SLAVE_INDEX][psm].fd, buf, len);
                   if(ret < 0)
                   {
-                    printf("write error (SERVER > CLIENT) (psm: 0x%04x)\n", psm_list[psm]);
+                    printf("write error (MASTER > SLAVE) (psm: 0x%04x)\n", psm_list[psm]);
                   }
                   if(debug)
                   {
-                    printf("SERVER > CLIENT (psm: 0x%04x)\n", psm_list[psm]);
+                    printf("MASTER > SLAVE (psm: 0x%04x)\n", psm_list[psm]);
                     dump(buf, len);
                   }
                 }
                 else if(errno != EINTR)
                 {
                   printf("recv error from server (psm: 0x%04x)\n", psm_list[psm]);
-                  close(pfd[MASTER_INDEX][psm].fd);
-                  pfd[MASTER_INDEX][psm].fd = -1;
-                  close(pfd[SLAVE_INDEX][psm].fd);
-                  pfd[SLAVE_INDEX][psm].fd = -1;
+                  close_fd(&pfd[MASTER_INDEX][psm]);
+                  close_fd(&pfd[SLAVE_INDEX][psm]);
                 }
                 else
                 {
-                  printf("write interrupted (SERVER > CLIENT) (psm: 0x%04x)\n", psm_list[psm]);
+                  printf("write interrupted (MASTER > SLAVE) (psm: 0x%04x)\n", psm_list[psm]);
                 }
                 break;
             }
@@ -286,7 +371,7 @@ int main(int argc, char *argv[])
     }
   }
 
-  for(i=0; i<3; ++i)
+  for(i=0; i<MAX_INDEX; ++i)
   {
     for(psm=0; psm<PSM_MAX_INDEX; ++psm)
     {
