@@ -12,7 +12,7 @@ int l2cap_connect(const char*, const char*, int);
 
 int l2cap_is_connected(int fd);
 
-int l2cap_send(int, const unsigned char*, int, int);
+int l2cap_send(const char* bdaddr_dst, unsigned short cid, int fd, const unsigned char* buf, int len);
 
 int l2cap_recv(int, unsigned char*, int);
 

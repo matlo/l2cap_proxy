@@ -32,7 +32,7 @@ struct bt_power {
  * This function can be used to bypass the l2cap outgoing MTU check of the Linux kernel.
  * If plen is higher than ACL_MTU, it sends a segmented packet.
  */
-int acl_send_data (const char *bdaddr_dst, unsigned short cid, unsigned char *data, unsigned short plen)
+int acl_send_data (const char *bdaddr_dst, unsigned short cid, const unsigned char *data, unsigned short plen)
 {
   int ret = -1, dd, device;
   struct hci_conn_info_req *cr = 0;
@@ -43,6 +43,7 @@ int acl_send_data (const char *bdaddr_dst, unsigned short cid, unsigned char *da
   struct iovec iv[4];
   int ivn;
   unsigned short data_len;
+  char* pdata = (char*)data;
 
   str2ba(bdaddr_dst, &ba);
 
@@ -95,7 +96,7 @@ int acl_send_data (const char *bdaddr_dst, unsigned short cid, unsigned char *da
   
   if (data_len)
   {
-    iv[3].iov_base = data;
+    iv[3].iov_base = pdata;
     iv[3].iov_len = htobs(data_len);
     ivn = 4;
   }
@@ -114,7 +115,7 @@ int acl_send_data (const char *bdaddr_dst, unsigned short cid, unsigned char *da
   
   while(plen)
   {
-    data += data_len;
+    pdata += data_len;
     data_len = ACL_MTU-1-HCI_ACL_HDR_SIZE;
     if(plen < data_len)
     {
@@ -130,7 +131,7 @@ int acl_send_data (const char *bdaddr_dst, unsigned short cid, unsigned char *da
     iv[1].iov_base = &acl_hdr;
     iv[1].iov_len = HCI_ACL_HDR_SIZE;
 
-    iv[2].iov_base = data;
+    iv[2].iov_base = pdata;
     iv[2].iov_len = htobs(data_len);
     ivn = 3;
   
@@ -238,12 +239,23 @@ int l2cap_connect(const char *bdaddr_src, const char *bdaddr_dest, int psm)
     return fd;
 }
 
-int l2cap_send(int fd, const unsigned char* buf, int len, int blocking)
+int l2cap_send(const char* bdaddr_dst, unsigned short cid, int fd, const unsigned char* buf, int len)
 {
-  if(send(fd, buf, len, blocking ? 0 : MSG_DONTWAIT) != len)
+  if(len > L2CAP_DEFAULT_MTU)
   {
-    perror("send");
-    return -1;
+    if(acl_send_data(bdaddr_dst, cid, buf, len) < 0)
+    {
+      perror("acl_send_data");
+      return -1;
+    }
+  }
+  else
+  {
+    if(write(fd, buf, len) != len)
+    {
+      perror("write");
+      return -1;
+    }
   }
   return len;
 }

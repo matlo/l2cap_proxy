@@ -111,6 +111,7 @@ int main(int argc, char *argv[])
   unsigned char buf[4096];
   ssize_t len;
   int ret;
+  unsigned int cpt = 0;
   bdaddr_t bdaddr_a;
   unsigned short psm_a;
   unsigned short cid_a;
@@ -303,12 +304,20 @@ int main(int argc, char *argv[])
                   break;
                 }
                 len = read(pfd[SLAVE_INDEX][psm].fd, buf, sizeof(buf));
+                cpt++;
+                if(psm_list[psm] == PSM_HID_Interrupt)
+                {
+                  if(cpt%8)
+                  {
+                    /*
+                     * TODO: try to get rid of this
+                     */
+                    break;
+                  }
+                }
                 if (len > 0)
                 {
-                  /*
-                   * TODO: send acl packets when packet size is larger than the outgoing MTU size
-                   */
-                  ret = write(pfd[MASTER_INDEX][psm].fd, buf, len);
+                  ret = l2cap_send(master, cid[MASTER_INDEX][psm], pfd[MASTER_INDEX][psm].fd, buf, len);
                   if(ret < 0)
                   {
                     printf("write error (SLAVE > MASTER) (psm: 0x%04x)\n", psm_list[psm]);
@@ -338,10 +347,7 @@ int main(int argc, char *argv[])
                 len = read(pfd[MASTER_INDEX][psm].fd, buf, sizeof(buf));
                 if (len > 0)
                 {
-                  /*
-                   * TODO: send acl packets when packet size is larger than the outgoing MTU size
-                   */
-                  ret = write(pfd[SLAVE_INDEX][psm].fd, buf, len);
+                  ret = l2cap_send(master, cid[SLAVE_INDEX][psm], pfd[SLAVE_INDEX][psm].fd, buf, len);
                   if(ret < 0)
                   {
                     printf("write error (MASTER > SLAVE) (psm: 0x%04x)\n", psm_list[psm]);
