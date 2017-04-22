@@ -18,7 +18,7 @@ The master and the device have to be paired with the bluetooth dongle.
 Compilation
 -----------
 ```
-sudo apt-get install libbluetooth-dev  
+sudo apt-get install libbluetooth-dev libmhash-dev
 sudo apt-get install git  
 git clone https://github.com/matlo/l2cap_proxy.git  
 cd l2cap_proxy  
