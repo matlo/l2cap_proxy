@@ -9,7 +9,7 @@ clean:
 	rm -f l2cap_proxy *~ *.o
 
 l2cap_proxy: l2cap_proxy.o l2cap_con.o sco_con.o bt_utils.o
-	$(CC) -o $@ $^ -lbluetooth -lmhash
+	$(CC) -o $@ $^ -lbluetooth
 
 %.o: %.c
 	$(CC) -o $@ -c $< $(CFLAGS)
