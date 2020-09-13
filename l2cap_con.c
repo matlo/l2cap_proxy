@@ -13,6 +13,7 @@
 #include <bluetooth/hci_lib.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
+#include <sys/uio.h>
 
 #ifdef BT_POWER
 #warning "BT_POWER is already defined."
