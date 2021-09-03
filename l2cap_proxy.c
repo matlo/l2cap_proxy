@@ -103,6 +103,14 @@ static void close_fd(struct pollfd* pfd)
   pfd->fd = -1;
 }
 
+void usage()
+{
+  printf("Usage: l2cap_proxy [options] <host address>\n");
+  printf("Options:\n");
+  printf("  -d <addr>, --dongle <addr>      Dongle address\n");
+  printf("  -c <class>, --class <class>     Device class\n");
+}
+
 int main(int argc, char *argv[])
 {
   char* master = NULL;
@@ -120,6 +128,12 @@ int main(int argc, char *argv[])
   char slave[sizeof("00:00:00:00:00:00")+1] = {};
   unsigned short cid[CID_MAX_INDEX][PSM_MAX_INDEX];
 
+  enum {
+    ARGSTATE_NONE,
+    ARGSTATE_DONGLEADDR,
+    ARGSTATE_DEVCLASS
+  } argstate = ARGSTATE_NONE;
+
   /*
    * Set highest priority & scheduler policy.
    */
@@ -132,18 +146,67 @@ int main(int argc, char *argv[])
 
   (void) signal(SIGINT, terminate);
 
-  /* Check args */
-  if (argc >= 1)
-    master = argv[1];
+  /* Parse command line args */
+  for (int i = 1; i < argc; ++i) {
+    switch (argstate) {
+      case ARGSTATE_NONE:
+        if (!strcmp(argv[i], "-d") || !strcmp(argv[i], "--dongle"))
+        {
+          argstate = ARGSTATE_DONGLEADDR;
+        }
+        else if (!strcmp(argv[i], "-c") || !strcmp(argv[i], "--class"))
+        {
+          argstate = ARGSTATE_DEVCLASS;
+        }
+        else
+        {
+          if (bachk(argv[i]) == -1)
+          {
+            fprintf(stderr, "Invalid host address \"%s\"\n", argv[i]);
+            usage();
+            return 1;
+          }
+          master = argv[i];
+        }
+        break;
+      case ARGSTATE_DONGLEADDR:
+        if (bachk(argv[i]) == -1)
+        {
+          fprintf(stderr, "Invalid dongle address \"%s\"\n", argv[i]);
+          usage();
+          return 1;
+        }
+        local = argv[i];
+        argstate = ARGSTATE_NONE;
+        break;
+      case ARGSTATE_DEVCLASS:
+        device_class = strtol(argv[i], NULL, 0);
+        argstate = ARGSTATE_NONE;
+        break;
+    }
+  }
 
-  if (argc >= 2)
-    local = argv[2];
+  switch (argstate) {
+    case ARGSTATE_NONE:
+      break;
+    case ARGSTATE_DONGLEADDR:
+      fprintf(stderr, "Missing argument to -d\n");
+      break;
+    case ARGSTATE_DEVCLASS:
+      fprintf(stderr, "Missing argument to -c\n");
+      break;
+  }
 
-  if (argc >= 3)
-    device_class = strtol(argv[3], NULL, 0);
+  if (argstate != ARGSTATE_NONE)
+  {
+    usage();
+    return 1;
+  }
 
-  if (!master || bachk(master) == -1 || (local && bachk(local) == -1)) {
-    printf("usage: %s <ps3-mac-address> <dongle-mac-address> <device-class>\n", *argv);
+  if (!master)
+  {
+    fprintf(stderr, "Missing host address\n");
+    usage();
     return 1;
   }
 
