@@ -155,32 +155,12 @@ int acl_send_data (const char *bdaddr_dst, unsigned short cid, const unsigned ch
   return ret;
 }
 
-#define L2CAP_MTU 1024
-
 static void l2cap_setsockopt(int fd)
 {
-  struct l2cap_options l2o;
-  socklen_t len = sizeof(l2o);
-
   int opt = L2CAP_LM_MASTER;
   if (setsockopt(fd, SOL_L2CAP, L2CAP_LM, &opt, sizeof(opt)) < 0)
   {
     perror("setsockopt L2CAP_LM");
-  }
-
-  memset(&l2o, 0, sizeof(l2o));
-  if(getsockopt(fd, SOL_L2CAP, L2CAP_OPTIONS, &l2o, &len) < 0)
-  {
-    perror("getsockopt L2CAP_OPTIONS");
-  }
-  else
-  {
-    l2o.omtu = L2CAP_MTU;
-    l2o.imtu = L2CAP_MTU;
-    if(setsockopt(fd, SOL_L2CAP, L2CAP_OPTIONS, &l2o, sizeof(l2o)) < 0)
-    {
-      perror("setsockopt L2CAP_OPTIONS");
-    }
   }
 
   /*if (fcntl(fd, F_SETFL, O_NONBLOCK) < 0)
